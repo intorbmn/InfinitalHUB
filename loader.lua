@@ -5,8 +5,6 @@
 
 local HttpService = game:GetService("HttpService")
 
--- ⚠️  Thay BASE_URL bằng raw URL của repo GitHub của bạn
---     VD: "https://raw.githubusercontent.com/TEN_BAN/bss-hub/main/"
 local BASE_URL = "https://raw.githubusercontent.com/intorbmn/InfinitalHUB/main/"
 
 -- ========== FETCH CONFIG ==========
