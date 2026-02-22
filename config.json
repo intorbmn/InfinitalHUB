@@ -1,0 +1,18 @@
+{
+    "hub_name": "fnnguyen Hub",
+    "version": "1.0.0",
+    "author": "fnnguyen",
+    "discord": "",
+    "notice": "",
+    "enabled": true,
+    "games": [
+        {
+            "id": "bee_swarm",
+            "name": "Bee Swarm Simulator",
+            "place_id": 1537690962,
+            "icon": "🐝",
+            "status": "active",
+            "script_url": "bss_main.lua"
+        }
+    ]
+}
