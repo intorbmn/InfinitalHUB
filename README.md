@@ -7,7 +7,7 @@ Script hub cho Roblox — hiện hỗ trợ **Bee Swarm Simulator**, có thể m
 Chạy dòng này trong executor:
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/loader.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/intorbmn/InfinitalHUB/main/loader.lua"))()
 ```
 
 ---
