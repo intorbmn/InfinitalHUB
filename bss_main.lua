@@ -662,6 +662,81 @@ local autoUseSpToggle, setUseSpToggle = makeBoolBtn(
 	end
 )
 
+local autoDigLabel = Instance.new("TextLabel", miscTab)
+autoDigLabel.Size = UDim2.new(0,100,0,15); autoDigLabel.Position = UDim2.new(0,10,0,100)
+autoDigLabel.BackgroundTransparency = 1; autoDigLabel.Text = "Auto Dig = Auto Click"
+autoDigLabel.TextColor3 = Color3.new(1,1,1); autoDigLabel.TextSize = 9
+
+local startAutoDig, stopAutoDig
+local autoDig        = false
+local autoDigThread  = nil
+
+local autoDigToggle, setDigToggle = makeBoolBtn(
+	miscTab,
+	UDim2.new(0, 120, 0, 100),
+	UDim2.new(0, 36, 0, 18),
+	false,
+	function(val)
+		autoDig = val
+		if val then
+			startAutoDig(0.15)
+		else
+			stopAutoDig()
+		end
+	end
+)
+
+startAutoDig = function(interval)
+	if autoDigThread then return end
+	interval = interval or 0.1
+
+	local function doClick()
+		if mouse1press then
+			mouse1press()
+			task.wait(0.05)
+			mouse1release()
+		elseif click then
+			click()
+		else
+			pcall(function()
+				VIM:SendMouseButtonEvent(0, 0, Enum.UserInputType.MouseButton1, true,  game, 0)
+				task.wait(0.05)
+				VIM:SendMouseButtonEvent(0, 0, Enum.UserInputType.MouseButton1, false, game, 0)
+			end)
+		end
+	end
+
+	autoDigThread = task.spawn(function()
+		for i = 3, 1, -1 do
+			if not autoDig then
+				autoDigThread = nil
+				autoDigLabel.Text = "Auto Dig = Auto Click"
+				return
+			end
+			autoDigLabel.Text = "Auto Dig (" .. i .. "s)..."
+			task.wait(1)
+		end
+		autoDigLabel.Text = "Auto Dig ✅"
+
+		while autoDig do
+			doClick()
+			task.wait(interval)
+		end
+
+		autoDigThread = nil
+		autoDigLabel.Text = "Auto Dig = Auto Click"
+	end)
+end
+
+stopAutoDig = function()
+	autoDig = false
+	if autoDigThread then
+		task.cancel(autoDigThread)
+		autoDigThread = nil
+	end
+	autoDigLabel.Text = "Auto Dig = Auto Click"
+end
+
 -- ===== SETTING TAB =====
 local settingTab = Instance.new("Frame", contentFrame)
 settingTab.Size = UDim2.new(1,0,1,0); settingTab.BackgroundTransparency = 1; settingTab.Visible = false
@@ -1366,6 +1441,8 @@ local function placeSprinkler(hum, hrp, fieldData, fieldName)
 		sprinklerPlacedFields[fieldName] = true
 	end
 end
+
+
 
 -- Reset khi tắt autoSp để có thể đặt lại khi bật
 -- (gọi setUseSpToggle sẽ tự update autoSp rồi)
