@@ -1318,7 +1318,7 @@ local function claimHive(hum, hrp)
 
 		moveWithJump(hum, hrp, plat.Position, nil)
 		task.wait(0.5)
-		pressEWithRetry(1, 1)
+		pressEWithRetry(1, 0.3)
 
 		if (spawnPos.Value.Position - UNSET_POS).Magnitude > 0.1 then
 			print("✅ Claimed:", platform.Name); return
@@ -1327,18 +1327,8 @@ local function claimHive(hum, hrp)
 			print("✅ Claimed (ref):", platform.Name); return
 		end
 
-		print("❌ Thất bại:", platform.Name, "→ thử tiếp")
 	end
 end
-
--- ================= NỘP POLLEN =================
--- Trong hive return loop, thay pressE() bằng:
--- task.wait(0.3)
--- pressEWithRetry(nil, 5, 0.4)  -- retry tối đa 5 lần, mỗi lần cách 0.4s
--- while task.wait(0.2) do
--- 	   if not capFull then break end  -- thoát khi pollen đã nộp xong
---     ...
--- end
 
 -- ================= SPRINKLER =================
 local function hasSprinklerInField(fieldData)
@@ -1496,31 +1486,88 @@ task.spawn(function()
 				local hum2 = c2 and c2:FindFirstChild("Humanoid")
 				if not h2 or not hum2 then returningToHive = false; return end
 
+				-- ① Di chuyển về hive theo path
 				moveThroughPath(hum2, h2, buildHivePath(), dest, "🍯 Full → về hive", function()
 					return not state.autoFarm
 				end)
 
 				if not state.autoFarm then returningToHive = false; return end
 
-				targetLabel.Text = "🍯 Đang nộp pollen..."
-				pressE()
+				-- ② Đợi player thực sự đứng sát hive (< 8 studs) rồi mới bấm E
+				-- Nếu vẫn còn xa thì tiếp tục MoveTo + jump cho đến khi tới nơi
+				targetLabel.Text = "🍯 Đang tiến đến hive..."
+				local HIVE_DIST   = 8    -- khoảng cách đủ gần để bấm E
+				local MAX_WAIT    = 10   -- giây chờ tối đa trước khi thử lại MoveTo
+				local waitTimer   = 0
 
-				while task.wait(0.2) do
-					if not state.autoFarm then break end
-					if not capFull then break end
+				while task.wait(0.1) do
+					if not state.autoFarm or not capFull then break end
+
 					local c3 = player.Character
 					local h3 = c3 and c3:FindFirstChild("HumanoidRootPart")
 					local hum3 = c3 and c3:FindFirstChild("Humanoid")
 					if not h3 or not hum3 then break end
-					if (h3.Position - dest).Magnitude > 15 then
+
+					local dist = (h3.Position - dest).Magnitude
+
+					if dist <= HIVE_DIST then
+						-- ✅ Đã đứng sát hive → dừng di chuyển, bấm E
+						hum3:MoveTo(h3.Position)
+						break
+					end
+
+					-- Vẫn còn xa → tiếp tục di chuyển + jump nếu bị kẹt
+					hum3:MoveTo(dest)
+					waitTimer += 0.1
+					if waitTimer >= MAX_WAIT then
+						-- Thử jump để thoát kẹt rồi reset timer
+						hum3.Jump = true
+						task.wait(0.15)
 						hum3:MoveTo(dest)
-						task.wait(3)
-						pressE()
+						waitTimer = 0
 					end
 				end
 
-				targetLabel.Text = "✅ Đã nộp, quay lại farm..."
-				task.wait(3)
+				if not state.autoFarm or not capFull then
+					returningToHive = false
+					return
+				end
+
+				-- ③ Đã sát hive → bấm E, retry đến khi pollen về 0
+				targetLabel.Text = "🍯 Đang nộp pollen..."
+				local MAX_RETRY  = 3  -- số lần bấm E tối đa
+				local RETRY_WAIT = 0.5  -- giây giữa mỗi lần retry
+
+				for i = 1, MAX_RETRY do
+					if not state.autoFarm then break end
+					if not capFull then break end   -- pollen đã nộp xong
+
+					-- Nếu bị đẩy ra xa thì đi vào lại trước khi bấm
+					local c4 = player.Character
+					local h4 = c4 and c4:FindFirstChild("HumanoidRootPart")
+					local hum4 = c4 and c4:FindFirstChild("Humanoid")
+					if not h4 or not hum4 then break end
+
+					if (h4.Position - dest).Magnitude > HIVE_DIST then
+						-- Bị đẩy ra → đi lại gần
+						moveWithJump(hum4, h4, dest, function()
+							return not state.autoFarm or not capFull
+						end)
+						if not capFull then break end
+					end
+
+					pressE()
+					task.wait(RETRY_WAIT)
+				end
+
+				-- ④ Xong
+				if not capFull then
+					targetLabel.Text = "✅ Đã nộp xong, quay lại farm..."
+				else
+					targetLabel.Text = "⚠️ Nộp pollen thất bại, thử lại..."
+				end
+
+				task.wait(1.5)
 				returningToHive = false
 			end)
 
@@ -1650,7 +1697,7 @@ UIS.InputBegan:Connect(function(i, gp)
 end)
 
 -- ================= SETTINGS =================
-local SETTINGS_FILE = "fnnguyen_script_bss_settings.json"
+local SETTINGS_FILE = "bss_settings.json"
 
 local function saveSettings()
 	local data = {
@@ -1685,8 +1732,6 @@ local function loadSettings()
 	print("✅ Đã load settings")
 	return data
 end
-
-loadSettings()
 
 -- Gọi sau khi toàn bộ UI đã tạo xong
 local function applySettings(data)
