@@ -739,7 +739,7 @@ end
 
 local convertBalloonLabel = Instance.new("TextLabel", miscTab)
 convertBalloonLabel.Size = UDim2.new(0,100,0,15); convertBalloonLabel.Position = UDim2.new(0,10,0,125)
-convertBalloonLabel.BackgroundTransparency = 1; convertBalloonLabel.Text = "Auto sprinkler"
+convertBalloonLabel.BackgroundTransparency = 1; convertBalloonLabel.Text = "Convert Balloon"
 convertBalloonLabel.TextColor3 = Color3.new(1,1,1); convertBalloonLabel.TextSize = 9
 
 local convertBalloon = false
