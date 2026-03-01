@@ -737,6 +737,22 @@ stopAutoDig = function()
 	autoDigLabel.Text = "Auto Dig = Auto Click"
 end
 
+local convertBalloonLabel = Instance.new("TextLabel", miscTab)
+convertBalloonLabel.Size = UDim2.new(0,100,0,15); convertBalloonLabel.Position = UDim2.new(0,10,0,125)
+convertBalloonLabel.BackgroundTransparency = 1; convertBalloonLabel.Text = "Auto sprinkler"
+convertBalloonLabel.TextColor3 = Color3.new(1,1,1); convertBalloonLabel.TextSize = 9
+
+local convertBalloon = false
+local convertBalloonToggle, setConvertBalloonToggle = makeBoolBtn(
+	miscTab,
+	UDim2.new(0, 120, 0, 125),
+	UDim2.new(0, 36, 0, 18),
+	false,
+	function(val)
+		convertBalloon = val
+	end
+)
+
 -- ===== SETTING TAB =====
 local settingTab = Instance.new("Frame", contentFrame)
 settingTab.Size = UDim2.new(1,0,1,0); settingTab.BackgroundTransparency = 1; settingTab.Visible = false
@@ -1009,7 +1025,9 @@ local coreStats   = player:WaitForChild("CoreStats")
 local pollenVal   = coreStats:WaitForChild("Pollen")
 local capacityVal = coreStats:WaitForChild("Capacity")
 
+local cP = true
 local function checkCapacity()
+	if cP == false then return end
 	if pollenVal.Value >= capacityVal.Value then capFull = true
 	elseif pollenVal.Value == 0 then capFull = false end
 end
@@ -1404,6 +1422,20 @@ local function claimHive(hum, hrp)
 			print("✅ Claimed (ref):", platform.Name); return
 		end
 
+	end
+end
+
+local function convertBalloon()
+	if convertBalloon == false then return end
+	local btn = player:WaitForChild("PlayerGui"):WaitForChild("ScreenGui"):WaitForChild("ActivateButton")
+	while true do
+		if btn.BackgoundColor3 == Color3.fromRGB(201, 39, 28) then
+			cP = false
+		else
+			task.wait(3)
+			cP = true
+		end
+		task.wait(0.5)
 	end
 end
 
