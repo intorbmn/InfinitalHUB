@@ -1171,9 +1171,552 @@ local FIELD_PATHS = {
 	["Ant Field"]         = {},
 }
 
--- ================= PATH HELPERS (rest of the file continues as in original) =================
--- Due to character limit, I'll note that the rest of the auto farm logic,
--- save/load settings functions remain mostly the same, with one key addition:
+-- ================= PATH HELPERS =================
+
+-- Tìm index của waypoint GẦN NHẤT với currentPos trong danh sách wps.
+-- Trả về index đó để bắt đầu đi từ đó, bỏ qua các wp trước nó.
+-- Nếu đã đứng gần dest hơn bất kỳ wp nào (tức giữa chừng) thì bỏ luôn path.
+local function findNearestWaypointIndex(wps, currentPos, destPos)
+	local bestIdx  = 1
+	local bestDist = math.huge
+	for i, pos in ipairs(wps) do
+		local d = (pos - currentPos).Magnitude
+		if d < bestDist then
+			bestDist = d
+			bestIdx  = i
+		end
+	end
+	-- Nếu dest gần hơn wp gần nhất -> không cần đi qua wp nào nữa
+	local distToDest = (currentPos - destPos).Magnitude
+	if distToDest < bestDist then
+		return #wps + 1  -- index vượt quá -> vòng lặp sẽ rỗng
+	end
+	return bestIdx
+end
+
+local function getFieldToFieldPath(fromField, toField, currentPos)
+	local wps = FIELD_TO_FIELD_PATHS[fromField .. " -> " .. toField]
+	if not wps then
+		local rev = FIELD_TO_FIELD_PATHS[toField .. " -> " .. fromField]
+		if rev then
+			wps = {}
+			for i = #rev, 1, -1 do table.insert(wps, rev[i]) end
+		end
+	end
+	if not wps then return nil end
+	if #wps == 0 then return {} end
+	local destPos = FIELDS[toField] and FIELDS[toField].pos or currentPos
+	local startIdx = findNearestWaypointIndex(wps, currentPos, destPos)
+	local filtered = {}
+	for i = startIdx, #wps do
+		if (wps[i] - currentPos).Magnitude > WAYPOINT_SKIP_DIST then
+			table.insert(filtered, wps[i])
+		end
+	end
+	return filtered
+end
+
+local function getPathToField(fieldName, currentPos)
+	local wps = FIELD_PATHS[fieldName]
+	if not wps or #wps == 0 then return {} end
+	local destPos  = FIELDS[fieldName] and FIELDS[fieldName].pos or currentPos
+	local startIdx = findNearestWaypointIndex(wps, currentPos, destPos)
+	local filtered = {}
+	for i = startIdx, #wps do
+		if (wps[i] - currentPos).Magnitude > WAYPOINT_SKIP_DIST then
+			table.insert(filtered, wps[i])
+		end
+	end
+	return filtered
+end
+
+local function getPathToHive(fieldName, currentPos)
+	local wps = FIELD_PATHS[fieldName]
+	if not wps or #wps == 0 then return {} end
+	-- Đường về hive = đảo ngược FIELD_PATHS
+	-- Tìm wp gần nhất (theo chiều ngược) rồi đi từ đó về spawn
+	local reversed = {}
+	for i = #wps, 1, -1 do reversed[#reversed+1] = wps[i] end
+	local spawnPos = player:FindFirstChild("SpawnPos")
+	local destPos  = spawnPos and spawnPos.Value.Position or currentPos
+	local startIdx = findNearestWaypointIndex(reversed, currentPos, destPos)
+	local filtered = {}
+	for i = startIdx, #reversed do
+		if (reversed[i] - currentPos).Magnitude > WAYPOINT_SKIP_DIST then
+			table.insert(filtered, reversed[i])
+		end
+	end
+	return filtered
+end
+
+-- ================= MOVE HELPERS =================
+local function moveWithJump(hum, hrp, destPos, interruptCheck)
+	hum:MoveTo(destPos)
+	local lastPos = hrp.Position
+	local stuckTimer = 0
+	while task.wait(0.05) do
+		if interruptCheck and interruptCheck() then return false end
+		if (hrp.Position - destPos).Magnitude < 6 then return true end
+		local moved = (hrp.Position - lastPos).Magnitude
+		if moved < 0.5 then
+			stuckTimer += 0.05
+			if stuckTimer >= 0.8 then
+				hum.Jump = true; task.wait(0.1)
+				hum:MoveTo(destPos); stuckTimer = 0
+			end
+		else
+			stuckTimer = 0
+		end
+		lastPos = hrp.Position
+	end
+	return false
+end
+
+local function moveThroughPath(hum, hrp, pathPoints, destPos, label, interruptCheck)
+	for _, pos in ipairs(pathPoints) do
+		if interruptCheck and interruptCheck() then return false end
+		if (hrp.Position - pos).Magnitude <= WAYPOINT_SKIP_DIST then continue end
+		targetLabel.Text = label .. " ..."
+		if not moveWithJump(hum, hrp, pos, interruptCheck) then return false end
+	end
+	if interruptCheck and interruptCheck() then return false end
+	targetLabel.Text = label
+	moveWithJump(hum, hrp, destPos, interruptCheck)
+	return true
+end
+
+local function getSelectedFieldData()
+	if #selectedFields == 0 then return nil, nil end
+	local name = selectedFields[1]
+	return name, FIELDS[name]
+end
+
+local function cleanCollected()
+	for token in pairs(collectedTokens) do
+		if not token.Parent then collectedTokens[token] = nil end
+	end
+end
+
+-- Cách 2: dùng VirtualInputManager của Roblox (không cần executor API)
+local function pressE()
+	VIM:SendKeyEvent(true,  Enum.KeyCode.E, false, game)
+	task.wait(0.1)
+	VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+end
+
+local function pressEWithRetry(times, interval)
+	local btn = player:WaitForChild("PlayerGui"):WaitForChild("ScreenGui"):WaitForChild("ActivateButton")
+	times    = times    or 3
+	interval = interval or 0.3
+	for i = 1, times do
+		if btn.BackgroundColor3 == Color3.fromRGB(201, 39, 28) then break end
+		pressE()
+		task.wait(interval)
+	end
+end
+
+-- ================= CLAIM HIVE =================
+local function claimHive(hum, hrp)
+	local spawnPos = player:FindFirstChild("SpawnPos")
+	if not spawnPos then return end
+	if (spawnPos.Value.Position - UNSET_POS).Magnitude > 0.1 then return end
+
+	local HivePlatforms = workspace:WaitForChild("HivePlatforms")
+
+	for _, platform in ipairs(HivePlatforms:GetChildren()) do
+		local playerRef = platform:FindFirstChild("PlayerRef")
+
+		if playerRef and playerRef.Value == player.Name then
+			local plat = platform:FindFirstChild("Platform")
+			if plat then moveWithJump(hum, hrp, plat.Position, nil) end
+			return
+		end
+
+		if playerRef and playerRef.Value ~= nil and playerRef.Value ~= "" then continue end
+
+		local plat = platform:FindFirstChild("Platform")
+		if not plat then continue end
+
+		moveWithJump(hum, hrp, plat.Position, nil)
+		task.wait(0.5)
+		pressEWithRetry(1, 0.3)
+
+		if (spawnPos.Value.Position - UNSET_POS).Magnitude > 0.1 then
+			print("✅ Claimed:", platform.Name); return
+		end
+		if playerRef and playerRef.Value == player.Name then
+			print("✅ Claimed (ref):", platform.Name); return
+		end
+
+	end
+end
+
+-- ================= SPRINKLER =================
+local function hasSprinklerInField(fieldData)
+	local gadgets = workspace:FindFirstChild("Gadgets")
+	if not gadgets then return false end
+	for _, s in ipairs(gadgets:GetChildren()) do
+		local pos = s:IsA("BasePart") and s.Position
+			or (s:IsA("Model") and s.PrimaryPart and s.PrimaryPart.Position)
+		if pos and isInField(pos, fieldData) then
+			return true
+		end
+	end
+	return false
+end
+
+local sprinklerPlacedFields = {} -- tránh đặt lại liên tục mỗi tick
+
+local function placeSprinkler(hum, hrp, fieldData, fieldName)
+	if not autoSp then return end
+	if sprinklerPlacedFields[fieldName] then return end  -- đã thử đặt rồi
+	if hasSprinklerInField(fieldData) then
+		sprinklerPlacedFields[fieldName] = true
+		return
+	end
+	local center = fieldData.pos
+	if (hrp.Position - center).Magnitude > 8 then
+		moveWithJump(hum, hrp, center, nil)
+	end
+	VIM:SendKeyEvent(true,  Enum.KeyCode.One, false, game)
+	task.wait(0.1)
+	VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
+	task.wait(0.3)
+	-- Đánh dấu đã đặt nếu có sprinkler xuất hiện
+	if hasSprinklerInField(fieldData) then
+		sprinklerPlacedFields[fieldName] = true
+	end
+end
+
+-- ================= COLLECTIBLES CACHE =================
+local tokenCache      = {}
+local tokenCacheDirty = true
+local lastSelectedField = nil
+
+local tokenNameMap = {}
+for _, t in ipairs(ALL_TOKENS) do
+	tokenNameMap[t.id] = t.name
+end
+
+local Collectibles = CollectedFolder
+
+local function rebuildTokenCache()
+	tokenCache = {}
+	local fieldName = selectedFields[1]
+	if not fieldName then return end
+	local fieldData = FIELDS[fieldName]
+	if not fieldData then return end
+	for _, child in ipairs(Collectibles:GetChildren()) do
+		if child.Name == "C" and isInField(child.Position, fieldData) then
+			tokenCache[child] = true
+		end
+	end
+	tokenCacheDirty = false
+end
+
+Collectibles.ChildAdded:Connect(function(child)
+	if child.Name ~= "C" then return end
+	local fieldName = selectedFields[1]
+	if not fieldName then return end
+	local fieldData = FIELDS[fieldName]
+	if fieldData and isInField(child.Position, fieldData) then
+		tokenCache[child] = true
+	end
+end)
+
+Collectibles.ChildRemoved:Connect(function(child)
+	tokenCache[child] = nil
+	collectedTokens[child] = nil
+end)
+
+local function findBestTokenFast(hrp, fieldData, excludeToken)
+	if tokenCacheDirty then rebuildTokenCache() end
+	local bPri, bPriD = nil, math.huge
+	local bNor, bNorD = nil, math.huge
+	for child in pairs(tokenCache) do
+		if child ~= excludeToken and not collectedTokens[child]
+			and child.Parent and isInField(child.Position, fieldData) then
+			local ok, dist = pcall(function() return (hrp.Position - child.Position).Magnitude end)
+			if ok then
+				local tex = getTexture(child)
+				if tex and tokenPriorityMap[tex] then
+					if dist < bPriD then bPri, bPriD = child, dist end
+				else
+					if dist < bNorD then bNor, bNorD = child, dist end
+				end
+			end
+		end
+	end
+	if bPri then local t = getTexture(bPri); return bPri, (t and tokenNameMap[t] or "⭐"), true end
+	if bNor then local t = getTexture(bNor); return bNor, (t and tokenNameMap[t] or "🍯"), false end
+	return nil, nil, false
+end
+
+-- ================= AUTO FARM LOOP =================
+local returningToHive = false
+local hiveChecked = false
+
+local function toggleFarm()
+	state.autoFarm = not state.autoFarm
+	if state.autoFarm then
+		hiveChecked = false  -- cho phép check lại khi bật
+	end
+	updateFarmStatus(state.autoFarm)
+end
+
+task.spawn(function()
+	while true do
+		task.wait(0.05)
+		if not state.autoFarm then
+			returningToHive = false
+			continue
+		end
+
+		local char = player.Character
+		if not char then continue end
+		local hrp = char:FindFirstChild("HumanoidRootPart")
+		local hum = char:FindFirstChild("Humanoid")
+		if not hrp or not hum or hum.Health <= 0 then continue end
+
+		-- Chỉ claim hive 1 lần duy nhất khi bật autoFarm
+		if not hiveChecked then
+			hiveChecked = true
+			claimHive(hum, hrp)
+		end
+
+		-- ===== FULL POLLEN -> VỀ HIVE =====
+		if capFull then
+			if returningToHive then continue end
+			returningToHive = true
+
+			task.spawn(function()
+				local spawnPos = player:FindFirstChild("SpawnPos")
+				if not spawnPos then returningToHive = false; return end
+
+				local dest = spawnPos.Value.Position
+
+				local function buildHivePath()
+					local c = player.Character
+					local h = c and c:FindFirstChild("HumanoidRootPart")
+					if not h then return {} end
+					if (h.Position - dest).Magnitude <= 50 then return {} end
+					local curFieldName = #selectedFields > 0 and selectedFields[1] or nil
+					return curFieldName and getPathToHive(curFieldName, h.Position) or {}
+				end
+
+				local c2 = player.Character
+				local h2 = c2 and c2:FindFirstChild("HumanoidRootPart")
+				local hum2 = c2 and c2:FindFirstChild("Humanoid")
+				if not h2 or not hum2 then returningToHive = false; return end
+
+				-- ① Di chuyển về hive theo path
+				moveThroughPath(hum2, h2, buildHivePath(), dest, "🍯 Full → về hive", function()
+					return not state.autoFarm
+				end)
+
+				if not state.autoFarm then returningToHive = false; return end
+
+				-- ② Đợi player thực sự đứng sát hive (< 8 studs) rồi mới bấm E
+				targetLabel.Text = "🍯 Đang tiến đến hive..."
+				local HIVE_DIST   = 8    -- khoảng cách đủ gần để bấm E
+				local MAX_WAIT    = 10   -- giây chờ tối đa trước khi thử lại MoveTo
+				local waitTimer   = 0
+
+				while task.wait(0.1) do
+					if not state.autoFarm or not capFull then break end
+
+					local c3 = player.Character
+					local h3 = c3 and c3:FindFirstChild("HumanoidRootPart")
+					local hum3 = c3 and c3:FindFirstChild("Humanoid")
+					if not h3 or not hum3 then break end
+
+					local dist = (h3.Position - dest).Magnitude
+
+					if dist <= HIVE_DIST then
+						-- ✅ Đã đứng sát hive → dừng di chuyển, bấm E
+						hum3:MoveTo(h3.Position)
+						break
+					end
+
+					-- Vẫn còn xa → tiếp tục di chuyển + jump nếu bị kẹt
+					hum3:MoveTo(dest)
+					waitTimer += 0.1
+					if waitTimer >= MAX_WAIT then
+						-- Thử jump để thoát kẹt rồi reset timer
+						hum3.Jump = true
+						task.wait(0.15)
+						hum3:MoveTo(dest)
+						waitTimer = 0
+					end
+				end
+
+				if not state.autoFarm or not capFull then
+					returningToHive = false
+					return
+				end
+
+				-- ③ Đã sát hive → bấm E, retry đến khi pollen về 0
+				targetLabel.Text = "🍯 Đang nộp pollen..."
+				local MAX_RETRY  = 3  -- số lần bấm E tối đa
+				local RETRY_WAIT = 0.5  -- giây giữa mỗi lần retry
+
+				for i = 1, MAX_RETRY do
+					if not state.autoFarm then break end
+					if not capFull then break end   -- pollen đã nộp xong
+
+					-- Nếu bị đẩy ra xa thì đi vào lại trước khi bấm
+					local c4 = player.Character
+					local h4 = c4 and c4:FindFirstChild("HumanoidRootPart")
+					local hum4 = c4 and c4:FindFirstChild("Humanoid")
+					if not h4 or not hum4 then break end
+
+					if (h4.Position - dest).Magnitude > HIVE_DIST then
+						-- Bị đẩy ra → đi lại gần
+						moveWithJump(hum4, h4, dest, function()
+							return not state.autoFarm or not capFull
+						end)
+						if not capFull then break end
+					end
+
+					pressE()
+					task.wait(RETRY_WAIT)
+				end
+
+				-- ④ Xong
+				if not capFull then
+					targetLabel.Text = "✅ Đã nộp xong, quay lại farm..."
+				else
+					targetLabel.Text = "⚠️ Nộp pollen thất bại, thử lại..."
+				end
+
+				task.wait(1.5)
+				returningToHive = false
+			end)
+
+			continue
+		end
+
+		if returningToHive then continue end
+
+		-- ===== CHƯA CHỌN FIELD =====
+		if #selectedFields == 0 then
+			targetLabel.Text = "Chưa chọn field nào"
+			hum:MoveTo(hrp.Position)
+			continue
+		end
+
+		if selectedFields[1] ~= lastSelectedField then
+			lastSelectedField = selectedFields[1]
+			tokenCacheDirty = true
+			sprinklerPlacedFields = {}
+		end
+
+		cleanCollected()
+
+		local fieldName, fieldData = getCurrentField(hrp)
+
+		if not fieldName then
+			local targetFieldName, targetFieldData = getSelectedFieldData()
+			if not targetFieldName then
+				targetLabel.Text = "Không tìm thấy field"
+				continue
+			end
+
+			if isInField(hrp.Position, targetFieldData) then continue end
+
+			local destPos   = targetFieldData.pos
+			local interrupt = function() return not state.autoFarm or capFull end
+			local path      = nil
+
+			-- Ưu tiên dùng field-to-field path nếu đang đứng trong field khác
+			local fromField = getAnyCurrentField(hrp)
+			if fromField and fromField ~= targetFieldName then
+				path = getFieldToFieldPath(fromField, targetFieldName, hrp.Position)
+			end
+
+			-- Fallback: dùng FIELD_PATHS từ spawn, bắt đầu từ waypoint gần nhất
+			if not path then
+				path = getPathToField(targetFieldName, hrp.Position)
+			end
+
+			moveThroughPath(hum, hrp, path, destPos,
+				"→ Đến field: " .. targetFieldName, interrupt)
+			continue
+		end
+
+		placeSprinkler(hum, hrp, fieldData, fieldName)
+
+		local target, name, isP = findBestTokenFast(hrp, fieldData, nil)
+		if not target then
+			targetLabel.Text = "[" .. fieldName .. "] Không có token"
+			hum:MoveTo(hrp.Position)
+			continue
+		end
+
+		local nxtT, nxtN, nxtP = findBestTokenFast(hrp, fieldData, target)
+		collectedTokens[target] = true
+		targetLabel.Text = "[" .. fieldName .. "] " .. name .. (isP and " ⭐" or "")
+		hum:MoveTo(target.Position)
+
+		local timeout = 0
+
+		while task.wait(0.05) do
+			if not state.autoFarm then break end
+			if capFull then break end
+
+			local curName, curData = getCurrentField(hrp)
+
+			if not target.Parent then
+				if nxtT and nxtT.Parent and not collectedTokens[nxtT]
+					and curData and isInField(nxtT.Position, curData) then
+					target, name, isP = nxtT, nxtN, nxtP
+					nxtT, nxtN, nxtP = findBestTokenFast(hrp, curData, target)
+					collectedTokens[target] = true
+					targetLabel.Text = "[" .. (curName or fieldName) .. "] " .. name .. (isP and " ⭐" or "")
+					hum:MoveTo(target.Position)
+					timeout = 0; continue
+				end
+				break
+			end
+
+			if not curData or not isInField(target.Position, curData) then
+				collectedTokens[target] = nil
+				targetLabel.Text = "Bỏ qua: ngoài field"
+				break
+			end
+
+			local ok, d = pcall(function() return (hrp.Position - target.Position).Magnitude end)
+			if not ok or d < 4 then break end
+
+			if not nxtT or not nxtT.Parent or collectedTokens[nxtT]
+				or (curData and not isInField(nxtT.Position, curData)) then
+				nxtT, nxtN, nxtP = findBestTokenFast(hrp, curData, target)
+			end
+
+			if not isP and nxtP and nxtT then
+				collectedTokens[target] = nil
+				target, name, isP = nxtT, nxtN, nxtP
+				nxtT, nxtN, nxtP = findBestTokenFast(hrp, curData, target)
+				collectedTokens[target] = true
+				targetLabel.Text = "[" .. (curName or fieldName) .. "] " .. name .. " ⭐"
+				hum:MoveTo(target.Position)
+				timeout = 0; continue
+			end
+
+			timeout += 0.05
+			if timeout > COLLECT_TIMEOUT then
+				collectedTokens[target] = nil
+				targetLabel.Text = "Bỏ qua: timeout"
+				break
+			end
+		end
+	end
+end)
+
+toggleFarmBtn.MouseButton1Click:Connect(toggleFarm)
+UIS.InputBegan:Connect(function(i, gp)
+	if not gp and i.KeyCode == Enum.KeyCode.T then toggleFarm() end
+end)
 
 -- ================= SETTINGS =================
 local SETTINGS_FILE = "bss_settings.json"
@@ -1184,7 +1727,7 @@ local function saveSettings()
 		jumpPower      = state.jumpPower,
 		khoangcachpart = state.khoangcachpart,
 		autoSp         = autoSp or false,
-		autoDisRunning = false, -- Always save as false since not working
+		autoDisRunning = false, -- Not working
 		selectedField  = selectedFields and selectedFields[1] or nil,
 		convertBalloon = convertBalloon or false, -- ===== ADDED =====
 		tokenPriority  = {},
@@ -1268,21 +1811,220 @@ local function applySettings(data)
 		end
 	end
 
-	print("✅ Settings đã được áp dụng")
+	local char = player.Character
+	if char then
+		local hum = char:FindFirstChild("Humanoid")
+		if hum then
+			hum.WalkSpeed    = state.walkSpeed
+			hum.UseJumpPower = true
+			hum.JumpPower    = state.jumpPower
+		end
+	end
 end
 
--- Load and apply settings
+-- Auto save mỗi 30 giây
+task.spawn(function()
+	while true do
+		task.wait(30)
+		if state.scriptEnabled then saveSettings() end
+	end
+end)
+
+-- ================= MINIMIZE =================
+local function fadeElement(e, t, dur)
+	local ti = TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	if e:IsA("TextButton") or e:IsA("TextLabel") or e:IsA("TextBox") then
+		local bg = (t == 0 and originalTransparency[e]) or t
+		TweenService:Create(e, ti, {TextTransparency=t, BackgroundTransparency=bg}):Play()
+	elseif e:IsA("Frame") or e:IsA("ScrollingFrame") then
+		local bg = (t == 0 and originalTransparency[e]) or t
+		TweenService:Create(e, ti, {BackgroundTransparency=bg}):Play()
+		for _, c in ipairs(e:GetChildren()) do
+			if c:IsA("GuiObject") and not c:IsA("UICorner") and not c:IsA("UIListLayout")
+				and not c:IsA("UIGridLayout") and not c:IsA("UIPadding") then
+				fadeElement(c, t, dur)
+			end
+		end
+	end
+end
+
+minimizeBtn.MouseButton1Click:Connect(function()
+	if state.isAnimating then return end
+	state.isAnimating = true
+	state.minimized = not state.minimized
+	if state.minimized then
+		for _, c in ipairs(contentFrame:GetChildren()) do
+			if c:IsA("GuiObject") then
+				if c:IsA("TextBox") then c.TextEditable = false end
+				if c:IsA("TextButton") then c.Active = false; c.AutoButtonColor = false end
+				fadeElement(c, 1, 0.2)
+			end
+		end
+		for _, c in ipairs(tabRow:GetChildren()) do
+			if c:IsA("TextButton") then c.Active = false; c.AutoButtonColor = false end
+			if c:IsA("GuiObject") then fadeElement(c, 1, 0.2) end
+		end
+		task.wait(0.2)
+		TweenService:Create(contentFrame, TweenInfo.new(0.3,Enum.EasingStyle.Quad), {Size=UDim2.new(1,0,0,0)}):Play()
+		TweenService:Create(tabRow,       TweenInfo.new(0.3,Enum.EasingStyle.Quad), {Size=UDim2.new(1,0,0,0)}):Play()
+		minimizeBtn.Text = "+"
+		task.wait(0.3)
+		contentFrame.Visible = false; tabRow.Visible = false
+		frame0.Size = UDim2.new(0,500,0,35)
+	else
+		contentFrame.Visible = true; tabRow.Visible = true
+		TweenService:Create(tabRow,       TweenInfo.new(0.3,Enum.EasingStyle.Quad), {Size=UDim2.new(1,0,0,30)}):Play()
+		TweenService:Create(contentFrame, TweenInfo.new(0.3,Enum.EasingStyle.Quad), {Size=UDim2.new(1,0,0,270)}):Play()
+		minimizeBtn.Text = "-"
+		task.wait(0.3)
+		for _, c in ipairs(contentFrame:GetChildren()) do
+			if c:IsA("GuiObject") then
+				if c:IsA("TextBox") then c.TextEditable = true end
+				if c:IsA("TextButton") then c.Active = true; c.AutoButtonColor = true end
+				fadeElement(c, 0, 0.2)
+			end
+		end
+		for _, c in ipairs(tabRow:GetChildren()) do
+			if c:IsA("TextButton") then c.Active = true; c.AutoButtonColor = true end
+			if c:IsA("GuiObject") then fadeElement(c, 0, 0.2) end
+		end
+		task.wait(0.2)
+		frame0.Size = UDim2.new(0,500,0,335)
+	end
+	state.isAnimating = false
+end)
+
+-- ================= BUTTON HANDLERS =================
+closeBtn.MouseButton1Click:Connect(function()
+	saveSettings()
+	state.scriptEnabled = false; state.keepWalkSpeed = false; state.autoFarm = false
+	local p = workspace:FindFirstChild(PART_NAME); if p then p:Destroy() end
+	gui:Destroy()
+end)
+
+wsBtn.MouseButton1Click:Connect(function()
+	if state.minimized then return end
+	local v = tonumber(wsBox.Text); if not v then return end
+	state.walkSpeed = math.clamp(v,1,CONFIG.maxWalkSpeed); wsBox.Text = tostring(state.walkSpeed)
+	state.keepWalkSpeed = true
+	local _, hum = getHumanoid(); hum.WalkSpeed = state.walkSpeed
+end)
+
+jpBtn.MouseButton1Click:Connect(function()
+	if state.minimized then return end
+	local v = tonumber(jpBox.Text); if not v then return end
+	state.jumpPower = math.clamp(v,1,CONFIG.maxJumpPower); jpBox.Text = tostring(state.jumpPower)
+	local _, hum = getHumanoid(); hum.UseJumpPower = true; hum.JumpPower = state.jumpPower
+end)
+
+kcBtn.MouseButton1Click:Connect(function()
+	if state.minimized then return end
+	local v = tonumber(kcBox.Text); if not v then return end
+	state.khoangcachpart = math.clamp(v,1,50); kcBox.Text = tostring(state.khoangcachpart)
+	local p = workspace:FindFirstChild(PART_NAME)
+	if p then
+		local char = player.Character
+		local head = char and char:FindFirstChild("Head")
+		if head then p.CFrame = head.CFrame * CFrame.new(0,state.khoangcachpart,0) end
+	end
+end)
+
+locateVicBtn.MouseButton1Click:Connect(function()
+	if state.minimized then return end
+	local wt = WTsFolder:FindFirstChild("WaitingThorn")
+	if wt then
+		if wt:FindFirstChild("LocateGui") then removeLocate(wt) else createLocate(wt,"📍 VICIOUS THORN",Color3.fromRGB(255,0,0)) end
+		return
+	end
+	local hasAny = false
+	for _, c in ipairs(monsters:GetChildren()) do
+		if c:IsA("Model") and string.find(string.lower(c.Name),"vicious") then
+			local bp = getBeePartFromModel(c); if bp and bp:FindFirstChild("LocateGui") then hasAny = true; break end
+		end
+	end
+	for _, c in ipairs(monsters:GetChildren()) do
+		if c:IsA("Model") and string.find(string.lower(c.Name),"vicious") then
+			local bp = getBeePartFromModel(c); if bp then
+				if hasAny then removeLocate(bp)
+				else createLocate(bp,"📍 VICIOUS BEE LV."..(string.match(c.Name,"%d+") or "?"),Color3.fromRGB(255,0,0)) end
+			end
+		end
+	end
+end)
+
+locateWindyBtn.MouseButton1Click:Connect(function()
+	if state.minimized then return end
+	local wp = npcBee:FindFirstChild("Windy")
+	if not wp or not wp:IsA("BasePart") then return end
+	if wp:FindFirstChild("LocateGui") then removeLocate(wp)
+	else createLocate(wp,"📍 WINDY LV."..(getWindyInfoFromMonsters() or "?"),Color3.fromRGB(0,150,255)) end
+end)
+
+locateStickerBtn.MouseButton1Click:Connect(function()
+	if state.minimized then return end
+	local stickers = {}
+	for _, c in ipairs(sticker:GetChildren()) do if c.Name=="HiddenStickerPart" then table.insert(stickers,c) end end
+	if #stickers == 0 then return end
+	local hasLoc = false
+	for _, sp in ipairs(stickers) do if sp:FindFirstChild("LocateGui") then hasLoc = true; break end end
+	for i, sp in ipairs(stickers) do
+		if hasLoc then removeLocate(sp) else createLocate(sp,"📍 STICKER #"..i,Color3.fromRGB(255,215,0)) end
+	end
+end)
+
+stickerTF:GetPropertyChangedSignal("Text"):Connect(function()
+	if stickerTF.Text == "0" then
+		for _, c in ipairs(sticker:GetChildren()) do if c.Name=="HiddenStickerPart" then removeLocate(c) end end
+	end
+end)
+vicBeeTF:GetPropertyChangedSignal("Text"):Connect(function()
+	if vicBeeTF.Text ~= "True" then
+		local wt = WTsFolder:FindFirstChild("WaitingThorn"); if wt then removeLocate(wt) end
+		for _, c in ipairs(monsters:GetChildren()) do
+			if c:IsA("Model") and string.find(string.lower(c.Name),"vicious") then
+				local bp = getBeePartFromModel(c); if bp then removeLocate(bp) end
+			end
+		end
+	end
+end)
+windyBeeTF:GetPropertyChangedSignal("Text"):Connect(function()
+	if windyBeeTF.Text ~= "True" then
+		local wp = npcBee:FindFirstChild("Windy"); if wp and wp:IsA("BasePart") then removeLocate(wp) end
+	end
+end)
+
+player.CharacterAdded:Connect(function()
+	task.wait(0.1)
+	local _, hum = getHumanoid()
+	if state.walkSpeed then hum.WalkSpeed = state.walkSpeed end
+	if state.jumpPower then hum.UseJumpPower = true; hum.JumpPower = state.jumpPower end
+end)
+
+-- ================= PART MANAGEMENT =================
+createPartBtn.MouseButton1Click:Connect(function()
+	if state.minimized or workspace:FindFirstChild(PART_NAME) then return end
+	local char = player.Character or player.CharacterAdded:Wait()
+	local head = char:WaitForChild("Head"); local root = char:WaitForChild("HumanoidRootPart")
+	local part = Instance.new("Part")
+	part.Name = PART_NAME; part.Size = Vector3.new(6,0.5,6)
+	part.Material = Enum.Material.Neon; part.Color = Color3.fromRGB(0,255,0)
+	part.Anchored = true; part.CanCollide = true
+	part.CFrame = head.CFrame * CFrame.new(0,state.khoangcachpart,0)
+	part.Parent = workspace
+	TweenService:Create(root, TweenInfo.new(0.5,Enum.EasingStyle.Sine,Enum.EasingDirection.Out), {
+		CFrame = part.CFrame * CFrame.new(0,3,0)
+	}):Play()
+end)
+
+deletePartBtn.MouseButton1Click:Connect(function()
+	if state.minimized then return end
+	local p = workspace:FindFirstChild(PART_NAME); if p then p:Destroy() end
+end)
+
+-- ================= LOAD AND APPLY SETTINGS =================
 local savedData = loadSettings()
 if savedData then
 	applySettings(savedData)
 end
-
--- Auto-save periodically
-task.spawn(function()
-	while state.scriptEnabled do
-		task.wait(60) -- Save every 60 seconds
-		saveSettings()
-	end
-end)
 
 print("✅ BSS Script loaded successfully!")
