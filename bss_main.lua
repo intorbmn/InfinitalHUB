@@ -1361,9 +1361,11 @@ end
 -- Không cần tìm ProximityPrompt nữa, chỉ cần đứng đúng chỗ
 
 local function pressEWithRetry(times, interval)
+	local btn = player:WaitForChild("PlayerGui"):WaitForChild("ScreenGui"):WaitForChild("ActivateButton")
 	times    = times    or 3
 	interval = interval or 0.3
 	for i = 1, times do
+		if btn.BackgroundColor3 == Color3.fromRGB(201, 39, 28) then break end
 		pressE()
 		task.wait(interval)
 	end
