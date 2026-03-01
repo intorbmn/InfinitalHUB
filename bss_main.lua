@@ -146,54 +146,106 @@ local fieldNameList = {
 	"Mixed Brick Field", "Blue Brick Field", "Red Brick Field", "White Brick Field",
 }
 
--- ================= SERVICES =================
-local WTsFolder  = workspace:WaitForChild("Particles"):WaitForChild("WTs")
+-- ================= GAME REFERENCES =================
+local CollectedFolder = workspace:WaitForChild("Collectibles")
+local ToysFolder = workspace:WaitForChild("Toys")
 local npcBee     = workspace:WaitForChild("NPCBees")
-local monsters   = workspace:WaitForChild("Monsters")
 local sticker    = workspace:WaitForChild("HiddenStickers")
-local Collectibles = workspace:WaitForChild("Collectibles")
+local WTsFolder  = workspace:WaitForChild("Particles"):WaitForChild("WTs")
+local monsters   = workspace:WaitForChild("Monsters")
 
--- ================= UI HELPERS =================
-local function createUICorner(parent, r)
-	local c = Instance.new("UICorner", parent)
-	c.CornerRadius = UDim.new(0, r or 5)
-	return c
+local function isInField(pos, field)
+	local xDist = math.abs(pos.X - field.pos.X)
+	local zDist = math.abs(pos.Z - field.pos.Z)
+	return xDist <= field.sizeX / 2 and zDist <= field.sizeZ / 2
 end
 
-local function applyStyle(e, bgColor)
-	e.BackgroundColor3 = bgColor or Color3.fromRGB(55, 55, 55)
-	e.TextColor3 = Color3.new(1,1,1)
-	e.Font = Enum.Font.Gotham
-	e.TextSize = 14
-	if e:IsA("TextLabel") then e.BackgroundTransparency = 1 end
-	createUICorner(e)
+local function getCurrentField(hrp)
+	local pos = hrp.Position
+	for name, data in pairs(FIELDS) do
+		if isInField(pos, data) then return name, data end
+	end
+	return nil, nil
 end
 
--- BUG FIX 2: makeBoolBtn signature cũ có param "knobPosX" thừa gây nhầm lẫn khi gọi.
--- Xóa knobPosX, dùng AnchorPoint để định vị knob chính xác (như bool_btn_v2).
+local function getAnyCurrentField(hrp)
+	local n, _ = getCurrentField(hrp)
+	return n
+end
+
+-- ===== CHECK IF IN HIVE =====
+local function isInHive(pos)
+	local hivePlatforms = workspace:WaitForChild("HivePlatforms")
+	for _, platform in ipairs(hivePlatforms) do
+		if platform:IsA("Part") then
+			local size = platform.Size
+			local pPos = platform.Position
+			local xDist = math.abs(pos.X - pPos.X)
+			local zDist = math.abs(pos.Z - pPos.Z)
+			local yDist = math.abs(pos.Y - pPos.Y)
+			if xDist <= size.X/2 and zDist <= size.Z/2 and yDist <= size.Y/2 + 10 then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- ================= PLACEMENTS DATA =================
+local SPRINKLER_POSITIONS = {
+	["Sunflower Field"]   = Vector3.new(-212.69, 4.49, 182.31),
+	["Dandelion Field"]   = Vector3.new(-117.69, 4.49, 225.31),
+	["Mushroom Field"]    = Vector3.new(-14.69, 4.49, 301.31),
+	["Blue Flower Field"] = Vector3.new(88.31, 4.49, 88.31),
+	["Clover Field"]      = Vector3.new(-41.69, 33.49, 189.81),
+	["Spider Field"]      = Vector3.new(-73.69, 20.49, 21.31),
+	["Strawberry Field"]  = Vector3.new(-180.69, 20.49, -0.69),
+	["Bamboo Field"]      = Vector3.new(99.81, 20.49, -1.69),
+	["Pineapple Patch"]   = Vector3.new(265.31, 68.49, -193.19),
+	["Stump Field"]       = Vector3.new(310.81, 96.49, -144.69),
+	["Cactus Field"]      = Vector3.new(-201.69, 68.49, -104.69),
+	["Pumpkin Patch"]     = Vector3.new(-191.69, 68.49, -193.19),
+	["Pine Tree Forest"]  = Vector3.new(-313.69, 68.49, -145.19),
+	["Rose Field"]        = Vector3.new(-317.69, 20.49, 124.31),
+	["Mountain Top Field"]= Vector3.new(71.31, 176.49, -190.69),
+	["Coconut Field"]     = Vector3.new(-151.69, 72.49, 541.31),
+	["Pepper Patch"]      = Vector3.new(-491.69, 124.49, 515.31),
+	["Ant Field"]         = Vector3.new(149.81, 32.99, 499.31),
+}
+
+local DISPENSERS = { "Strawberry Dispenser", "Blueberry Dispenser", "Treat Dispenser", "Coconut Dispenser", "Royal Jelly Dispenser", "Honey Dispenser", "Glue Dispenser" }
+
+-- ================= STYLING HELPERS =================
+local function applyStyle(e)
+	e.BackgroundColor3 = Color3.fromRGB(55,55,55); e.BorderSizePixel = 0
+	e.Font = Enum.Font.Gotham; e.TextColor3 = Color3.new(1,1,1); e.TextSize = 14
+end
+
+local function createUICorner(e, r)
+	local c = Instance.new("UICorner", e); c.CornerRadius = UDim.new(0, r or 6); return c
+end
+
 local function makeBoolBtn(parent, pos, size, defaultValue, onChange)
 	local container = Instance.new("Frame")
-	container.Position = pos
 	container.Size = size
+	container.Position = pos
 	container.BackgroundTransparency = 1
 	container.Parent = parent
 
 	local track = Instance.new("Frame")
 	track.Size = UDim2.new(1, 0, 1, 0)
-	track.Position = UDim2.new(0, 0, 0, 0)
+	track.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
 	track.BorderSizePixel = 0
-	track.BackgroundColor3 = defaultValue and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(80, 80, 80)
 	track.Parent = container
-	Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+	createUICorner(track, 999)
 
 	local knob = Instance.new("Frame")
-	-- AnchorPoint luôn là (0, 0.5), KHÔNG thay đổi
-	knob.AnchorPoint = Vector2.new(0, 0.5)
-	knob.Size = UDim2.new(0, 0, 1, -4)
+	knob.Size = UDim2.new(1, -4, 1, -4)
+	knob.BackgroundColor3 = Color3.new(1, 1, 1)
 	knob.BorderSizePixel = 0
-	knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	knob.AnchorPoint = Vector2.new(0, 0.5)
 	knob.Parent = track
-	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+	createUICorner(knob, 999)
 
 	local arc = Instance.new("UIAspectRatioConstraint", knob)
 	arc.AspectRatio = 1
@@ -399,201 +451,157 @@ local farmStatusBadge = Instance.new("TextLabel", farmStatusFrame)
 farmStatusBadge.Position = UDim2.new(1,-80,0,5); farmStatusBadge.Size = UDim2.new(0,70,0,30)
 farmStatusBadge.Text = "False"; farmStatusBadge.TextColor3 = Color3.new(1,1,1)
 farmStatusBadge.Font = Enum.Font.GothamBold; farmStatusBadge.TextSize = 13
-farmStatusBadge.BackgroundColor3 = Color3.fromRGB(200,0,0); createUICorner(farmStatusBadge)
+farmStatusBadge.BackgroundColor3 = Color3.fromRGB(200,0,0); farmStatusBadge.BorderSizePixel = 0
+createUICorner(farmStatusBadge)
 
-local toggleFarmBtn = makeBtn(farmTab, UDim2.new(0,10,0,15), UDim2.new(0.51,-20,0,30), "▶ Bật Auto Farm")
-toggleFarmBtn.BackgroundColor3 = Color3.fromRGB(55,55,55); toggleFarmBtn.Font = Enum.Font.GothamBold
-
-local chooseTokenBtn = Instance.new("TextButton", farmTab)
-chooseTokenBtn.Position = UDim2.new(0,10,0,60); chooseTokenBtn.Size = UDim2.new(0.5,-14,0,26)
-chooseTokenBtn.Text = "🍀 Token"; chooseTokenBtn.Font = Enum.Font.GothamBold
-chooseTokenBtn.TextSize = 12; chooseTokenBtn.TextColor3 = Color3.new(1,1,1)
-chooseTokenBtn.BackgroundColor3 = COL_TOKEN_ACTIVE; chooseTokenBtn.BorderSizePixel = 0
-createUICorner(chooseTokenBtn, 5)
-
-local chooseFieldBtn = Instance.new("TextButton", farmTab)
-chooseFieldBtn.Position = UDim2.new(0.5,4,0,60); chooseFieldBtn.Size = UDim2.new(0.5,-14,0,26)
-chooseFieldBtn.Text = "🌿 Field (0)"; chooseFieldBtn.Font = Enum.Font.GothamBold
-chooseFieldBtn.TextSize = 12; chooseFieldBtn.TextColor3 = Color3.new(1,1,1)
-chooseFieldBtn.BackgroundColor3 = COL_OFF; chooseFieldBtn.BorderSizePixel = 0
-createUICorner(chooseFieldBtn, 5)
+local toggleFarmBtn = makeBtn(farmTab, UDim2.new(0,253,0,60), UDim2.new(0.514,-20,0,35), "▶ Bật Auto Farm")
+toggleFarmBtn.BackgroundColor3 = Color3.fromRGB(55,55,55)
 
 local targetLabel = Instance.new("TextLabel", farmTab)
-targetLabel.Position = UDim2.new(0,10,0,92); targetLabel.Size = UDim2.new(1,-20,0,22)
-targetLabel.BackgroundColor3 = Color3.fromRGB(30,30,30); targetLabel.BackgroundTransparency = 0.3
-targetLabel.TextColor3 = Color3.fromRGB(180,180,180); targetLabel.Font = Enum.Font.Gotham
-targetLabel.TextSize = 12; targetLabel.Text = "Mục tiêu: --"
-targetLabel.TextXAlignment = Enum.TextXAlignment.Left; createUICorner(targetLabel)
+targetLabel.Position = UDim2.new(0,253,0,100); targetLabel.Size = UDim2.new(0.514,-20,0,25)
+targetLabel.BackgroundColor3 = Color3.fromRGB(50,50,50); targetLabel.Text = "Mục tiêu: --"
+targetLabel.TextColor3 = Color3.new(1,1,1); targetLabel.Font = Enum.Font.Gotham; targetLabel.TextSize = 12
+createUICorner(targetLabel)
 
-local hotkeyHint = Instance.new("TextLabel", farmTab)
-hotkeyHint.Position = UDim2.new(0,10,1,-20); hotkeyHint.Size = UDim2.new(1,-20,0,16)
-hotkeyHint.BackgroundTransparency = 1; hotkeyHint.TextColor3 = Color3.fromRGB(100,100,100)
-hotkeyHint.Font = Enum.Font.Gotham; hotkeyHint.TextSize = 11
-hotkeyHint.Text = "Phím tắt: [T] Bật/Tắt Auto Farm"
-hotkeyHint.TextXAlignment = Enum.TextXAlignment.Center
+local leftColumn = Instance.new("Frame", farmTab)
+leftColumn.Size = UDim2.new(0.486,0,1,0); leftColumn.BackgroundTransparency = 1
 
-local PANEL_POS  = UDim2.new(0,10,0,120)
-local PANEL_SIZE = UDim2.new(1,-20,0,128)
+local topToggleRow = Instance.new("Frame", leftColumn)
+topToggleRow.Size = UDim2.new(1,0,0,30); topToggleRow.Position = UDim2.new(0,10,0,10)
+topToggleRow.BackgroundTransparency = 1
 
--- ===== TOKEN PANEL =====
-local tokenPanel = Instance.new("Frame", farmTab)
-tokenPanel.Position = PANEL_POS; tokenPanel.Size = PANEL_SIZE
-tokenPanel.BackgroundTransparency = 1; tokenPanel.Visible = true
+local tokenPanelBtn = Instance.new("TextButton", topToggleRow)
+tokenPanelBtn.Size = UDim2.new(0.5,-5,1,0); tokenPanelBtn.Position = UDim2.new(0,0,0,0)
+tokenPanelBtn.BackgroundColor3 = COL_TOKEN_ACTIVE; tokenPanelBtn.BorderSizePixel = 0
+tokenPanelBtn.Text = "Token"; tokenPanelBtn.Font = Enum.Font.GothamBold
+tokenPanelBtn.TextSize = 13; tokenPanelBtn.TextColor3 = Color3.new(1,1,1)
+createUICorner(tokenPanelBtn, 6)
 
-local tpTitle = Instance.new("TextLabel", tokenPanel)
-tpTitle.Size = UDim2.new(1,0,0,16); tpTitle.BackgroundTransparency = 1
-tpTitle.TextColor3 = Color3.fromRGB(255,200,50); tpTitle.Font = Enum.Font.GothamBold
-tpTitle.TextSize = 11; tpTitle.TextXAlignment = Enum.TextXAlignment.Left
-tpTitle.Text = "⭐ Token ưu tiên — xanh = ưu tiên"
+local fieldPanelBtn = Instance.new("TextButton", topToggleRow)
+fieldPanelBtn.Size = UDim2.new(0.5,-5,1,0); fieldPanelBtn.Position = UDim2.new(0.5,5,0,0)
+fieldPanelBtn.BackgroundColor3 = COL_OFF; fieldPanelBtn.BorderSizePixel = 0
+fieldPanelBtn.Text = "Field"; fieldPanelBtn.Font = Enum.Font.GothamBold
+fieldPanelBtn.TextSize = 13; fieldPanelBtn.TextColor3 = Color3.new(1,1,1)
+createUICorner(fieldPanelBtn, 6)
 
-local tokenScroll = Instance.new("ScrollingFrame", tokenPanel)
-tokenScroll.Position = UDim2.new(0,0,0,18); tokenScroll.Size = UDim2.new(1,0,0,110)
-tokenScroll.BackgroundColor3 = Color3.fromRGB(30,30,30); tokenScroll.BackgroundTransparency = 0.3
-tokenScroll.BorderSizePixel = 0; tokenScroll.ScrollBarThickness = 4
-tokenScroll.ScrollBarImageColor3 = Color3.fromRGB(100,100,100)
+local tokenScroll = Instance.new("ScrollingFrame", leftColumn)
+tokenScroll.Size = UDim2.new(1,-20,0,210); tokenScroll.Position = UDim2.new(0,10,0,50)
+tokenScroll.BackgroundColor3 = Color3.fromRGB(35,35,35); tokenScroll.BorderSizePixel = 0
+tokenScroll.ScrollBarThickness = 6; tokenScroll.CanvasSize = UDim2.new(0,0,0,0)
 createUICorner(tokenScroll)
-
-local tGrid = Instance.new("UIGridLayout", tokenScroll)
-tGrid.CellSize = UDim2.new(0,113,0,26); tGrid.CellPadding = UDim2.new(0,4,0,4)
-tGrid.HorizontalAlignment = Enum.HorizontalAlignment.Left
-tGrid.SortOrder = Enum.SortOrder.LayoutOrder
+local tokenGrid = Instance.new("UIGridLayout", tokenScroll)
+tokenGrid.CellSize = UDim2.new(0,210,0,26)
+tokenGrid.CellPadding = UDim2.new(0,4,0,4)
+tokenGrid.HorizontalAlignment = Enum.HorizontalAlignment.Left
+tokenGrid.SortOrder = Enum.SortOrder.LayoutOrder
 local tPad = Instance.new("UIPadding", tokenScroll)
 tPad.PaddingLeft = UDim.new(0,5); tPad.PaddingTop = UDim.new(0,4)
 
+local fieldScroll = Instance.new("ScrollingFrame", leftColumn)
+fieldScroll.Size = UDim2.new(1,-20,0,210); fieldScroll.Position = UDim2.new(0,10,0,50)
+fieldScroll.BackgroundColor3 = Color3.fromRGB(35,35,35); fieldScroll.BorderSizePixel = 0
+fieldScroll.ScrollBarThickness = 6; fieldScroll.CanvasSize = UDim2.new(0,0,0,0)
+fieldScroll.Visible = false
+createUICorner(fieldScroll)
+local fieldGrid = Instance.new("UIGridLayout", fieldScroll)  -- đổi sang UIGridLayout
+fieldGrid.CellSize = UDim2.new(0,210,0,32)  -- cao hơn token 1 chút cho dễ bấm
+fieldGrid.CellPadding = UDim2.new(0,4,0,4)
+fieldGrid.HorizontalAlignment = Enum.HorizontalAlignment.Left
+fieldGrid.SortOrder = Enum.SortOrder.LayoutOrder
+local fPad = Instance.new("UIPadding", fieldScroll)
+fPad.PaddingLeft = UDim.new(0,5); fPad.PaddingTop = UDim.new(0,4)
+
 for i, t in ipairs(ALL_TOKENS) do
 	local btn = Instance.new("TextButton", tokenScroll)
-	btn.Size = UDim2.new(0,113,0,26); btn.Font = Enum.Font.Gotham; btn.TextSize = 11
-	btn.TextColor3 = Color3.new(1,1,1); btn.BorderSizePixel = 0
-	btn.Text = t.emoji .. " " .. t.name; btn.LayoutOrder = i
 	btn.BackgroundColor3 = t.priority and COL_ON or COL_OFF
+	btn.BorderSizePixel = 0
+	btn.Text = t.emoji .. " " .. t.name
+	btn.Font = Enum.Font.Gotham
+	btn.TextSize = 11
+	btn.TextColor3 = Color3.new(1,1,1)
+	btn.TextXAlignment = Enum.TextXAlignment.Left
+	btn.LayoutOrder = i
 	createUICorner(btn, 4)
+	local tPadBtn = Instance.new("UIPadding", btn)
+	tPadBtn.PaddingLeft = UDim.new(0,4)
 	btn.MouseButton1Click:Connect(function()
 		t.priority = not t.priority
-		-- BUG FIX 1 (sync): cập nhật tokenPriorityMap đúng cách
 		tokenPriorityMap[t.id] = t.priority or nil
 		btn.BackgroundColor3 = t.priority and COL_ON or COL_OFF
 	end)
 end
-task.defer(function()
-	tokenScroll.CanvasSize = UDim2.new(0,0,0, tGrid.AbsoluteContentSize.Y + 8)
+tokenGrid:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	tokenScroll.CanvasSize = UDim2.new(0,0,0, tokenGrid.AbsoluteContentSize.Y + 10)
 end)
 
--- ===== FIELD PANEL =====
-local fieldPanel = Instance.new("Frame", farmTab)
-fieldPanel.Position = PANEL_POS; fieldPanel.Size = PANEL_SIZE
-fieldPanel.BackgroundTransparency = 1; fieldPanel.Visible = false
-
-local fpTitle = Instance.new("TextLabel", fieldPanel)
-fpTitle.Size = UDim2.new(1,0,0,16); fpTitle.BackgroundTransparency = 1
-fpTitle.TextColor3 = Color3.fromRGB(100,220,100); fpTitle.Font = Enum.Font.GothamBold
-fpTitle.TextSize = 11; fpTitle.TextXAlignment = Enum.TextXAlignment.Left
-fpTitle.Text = "🌿 Chọn field farm — xanh = đang chọn"
-
-local fieldScroll = Instance.new("ScrollingFrame", fieldPanel)
-fieldScroll.Position = UDim2.new(0,0,0,18); fieldScroll.Size = UDim2.new(1,0,0,110)
-fieldScroll.BackgroundColor3 = Color3.fromRGB(30,30,30); fieldScroll.BackgroundTransparency = 0.3
-fieldScroll.BorderSizePixel = 0; fieldScroll.ScrollBarThickness = 4
-fieldScroll.ScrollBarImageColor3 = Color3.fromRGB(100,100,100)
-createUICorner(fieldScroll)
-
-local fGrid = Instance.new("UIGridLayout", fieldScroll)
-fGrid.CellSize = UDim2.new(0,150,0,26); fGrid.CellPadding = UDim2.new(0,4,0,4)
-fGrid.HorizontalAlignment = Enum.HorizontalAlignment.Left
-fGrid.SortOrder = Enum.SortOrder.LayoutOrder
-local fPad = Instance.new("UIPadding", fieldScroll)
-fPad.PaddingLeft = UDim.new(0,5); fPad.PaddingTop = UDim.new(0,4)
-
+local selectedFields = {}
+local fieldNameList = {
+	"Sunflower Field", "Dandelion Field", "Mushroom Field", "Blue Flower Field",
+	"Clover Field", "Spider Field", "Strawberry Field", "Bamboo Field",
+	"Pineapple Patch", "Cactus Field", "Pumpkin Patch", "Pine Tree Forest",
+	"Rose Field", "Mountain Top Field", "Stump Field", "Coconut Field",
+	"Pepper Patch", "Ant Field", "Hub Field",
+	"Mixed Brick Field", "Blue Brick Field", "Red Brick Field", "White Brick Field",
+}
 local fieldBtnMap = {}
-
-local function updateFieldTabLabel()
-	chooseFieldBtn.Text = "🌿 Field (" .. #selectedFields .. ")"
-end
-
 local function isFieldSelected(name)
 	for _, n in ipairs(selectedFields) do
 		if n == name then return true end
 	end
 	return false
 end
-
-for i, name in ipairs(fieldNameList) do
-	local btn = Instance.new("TextButton", fieldScroll)
-	btn.Size = UDim2.new(0,150,0,26); btn.Font = Enum.Font.Gotham; btn.TextSize = 11
-	btn.TextColor3 = Color3.new(1,1,1); btn.BorderSizePixel = 0
-	btn.Text = name; btn.LayoutOrder = i
-	btn.BackgroundColor3 = COL_OFF
-	createUICorner(btn, 4)
-	fieldBtnMap[name] = btn
-
-	btn.MouseButton1Click:Connect(function()
-		if isFieldSelected(name) then
+for i, n in ipairs(fieldNameList) do
+	local fb = Instance.new("TextButton", fieldScroll)
+	fb.BorderSizePixel = 0
+	fb.Text = n
+	fb.Font = Enum.Font.Gotham
+	fb.TextSize = 12
+	fb.TextColor3 = Color3.new(1,1,1)
+	fb.TextXAlignment = Enum.TextXAlignment.Left
+	fb.BackgroundColor3 = COL_OFF
+	fb.LayoutOrder = i
+	createUICorner(fb, 4)
+	local fbPad = Instance.new("UIPadding", fb)
+	fbPad.PaddingLeft = UDim.new(0,6)
+	fieldBtnMap[n] = fb
+	fb.MouseButton1Click:Connect(function()
+		if isFieldSelected(n) then
+			-- Đang chọn → bỏ chọn
 			table.clear(selectedFields)
-			btn.BackgroundColor3 = COL_OFF
+			fb.BackgroundColor3 = COL_OFF
 		else
-			for _, otherBtn in pairs(fieldBtnMap) do
-				otherBtn.BackgroundColor3 = COL_OFF
-			end
+			-- Chọn field mới
 			table.clear(selectedFields)
-			table.insert(selectedFields, name)
-			btn.BackgroundColor3 = COL_ON
+			table.insert(selectedFields, n)
+			for name, btn in pairs(fieldBtnMap) do
+				btn.BackgroundColor3 = name == n and COL_FIELD_ACTIVE or COL_OFF
+			end
 		end
-		updateFieldTabLabel()
 	end)
+
 end
 
-task.defer(function()
-	fieldScroll.CanvasSize = UDim2.new(0,0,0, fGrid.AbsoluteContentSize.Y + 8)
+fieldGrid:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	fieldScroll.CanvasSize = UDim2.new(0,0,0, fieldGrid.AbsoluteContentSize.Y + 10)
 end)
 
-local function setFarmPanel(panel)
-	state.farmPanel = panel
-	tokenPanel.Visible = panel == "token"
-	fieldPanel.Visible = panel == "field"
-	chooseTokenBtn.BackgroundColor3 = panel == "token" and COL_TOKEN_ACTIVE or COL_OFF
-	chooseFieldBtn.BackgroundColor3 = panel == "field" and COL_FIELD_ACTIVE or COL_OFF
-end
+tokenPanelBtn.MouseButton1Click:Connect(function()
+	state.farmPanel = "token"
+	tokenScroll.Visible = true; fieldScroll.Visible = false
+	tokenPanelBtn.BackgroundColor3 = COL_TOKEN_ACTIVE
+	fieldPanelBtn.BackgroundColor3 = COL_OFF
+end)
 
-chooseTokenBtn.MouseButton1Click:Connect(function() setFarmPanel("token") end)
-chooseFieldBtn.MouseButton1Click:Connect(function() setFarmPanel("field") end)
+fieldPanelBtn.MouseButton1Click:Connect(function()
+	state.farmPanel = "field"
+	tokenScroll.Visible = false; fieldScroll.Visible = true
+	tokenPanelBtn.BackgroundColor3 = COL_OFF
+	fieldPanelBtn.BackgroundColor3 = COL_FIELD_ACTIVE
+end)
 
 -- ===== MISC TAB =====
 local miscTab = Instance.new("Frame", contentFrame)
 miscTab.Size = UDim2.new(1,0,1,0); miscTab.BackgroundTransparency = 1; miscTab.Visible = false
-
---local DISPENSERS = {
---	"Blueberry Dispenser", "Coconut Dispenser", "Free Ant Pass Dispenser",
---	"Free Robo Pass Dispenser", "Free Royal Jelly Dispenser",
---	"Glue Dispenser", "Honey Dispenser", "Strawberry Dispenser",
---}
-
---local ToysFolder = workspace:WaitForChild("Toys")
---local StatCache  = require(game:GetService("ReplicatedStorage"):WaitForChild("ClientStatCache"))
---local OsTime     = require(game:GetService("ReplicatedStorage"):WaitForChild("OsTime"))
---local Events     = require(game:GetService("ReplicatedStorage"):WaitForChild("Events"))
---local autoDisRunning = false
-
---local function getDisCooldown(toy)
---	local Cooldown = toy:FindFirstChild("Cooldown")
---	if not Cooldown then return 0 end
---	local ok, statCache = pcall(function() return StatCache:Get() end)
---	if not ok or not statCache then return 0 end
---	local toyTimes = statCache.ToyTimes or {}
---	local lastUsed = toyTimes[toy.Name] or 0
---	local elapsed  = math.floor(OsTime()) - lastUsed
---	local remaining = Cooldown.Value - elapsed
---	return remaining > 0 and remaining or 0
---end
-
---local function getNextCooldown()
---	local minCd = math.huge
---	for _, toy in ipairs(ToysFolder:GetDescendants()) do
---		if toy:IsA("Model") and table.find(DISPENSERS, toy.Name) then
---			local cd = getDisCooldown(toy)
---			if cd > 0 and cd < minCd then minCd = cd end
---		end
---	end
---	return minCd == math.huge and 60 or minCd
---end
 
 --local function useAllDispensers()
 --	local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
@@ -617,6 +625,7 @@ local autoDisLabel = Instance.new("TextLabel", miscTab)
 autoDisLabel.Size = UDim2.new(0,100,0,15); autoDisLabel.Position = UDim2.new(0,10,0,50)
 autoDisLabel.BackgroundTransparency = 1; autoDisLabel.Text = "Auto use dispenser"
 autoDisLabel.TextColor3 = Color3.new(1,1,1); autoDisLabel.TextSize = 9
+autoDisLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 -- BUG FIX 2 (call site): xóa tham số knobPosX thừa (false trước function)
 local autoUseDisToggle, setUseDisToggle = makeBoolBtn(
@@ -644,12 +653,13 @@ local autoUseDisToggle, setUseDisToggle = makeBoolBtn(
 local nw = Instance.new("TextLabel", miscTab)
 nw.Size = UDim2.new(0,150,0,15); nw.Position = UDim2.new(0,15,0,30); nw.Rotation = -15
 nw.BackgroundTransparency = 1; nw.Text = "This shit not working!"
-nw.TextColor3 = Color3.new(1,0,0); nw.TextSize = 10; nw.TextWrap = true
+nw.TextColor3 = Color3.new(1,0,0); nw.TextSize = 10; nw.TextWrapped = false
 
 local autoSpLabel = Instance.new("TextLabel", miscTab)
 autoSpLabel.Size = UDim2.new(0,100,0,15); autoSpLabel.Position = UDim2.new(0,10,0,75)
 autoSpLabel.BackgroundTransparency = 1; autoSpLabel.Text = "Auto sprinkler"
 autoSpLabel.TextColor3 = Color3.new(1,1,1); autoSpLabel.TextSize = 9
+autoSpLabel.TextXAlignment = Enum.TextXAlignment.Left 
 
 local autoSp = false
 local autoUseSpToggle, setUseSpToggle = makeBoolBtn(
@@ -666,6 +676,7 @@ local autoDigLabel = Instance.new("TextLabel", miscTab)
 autoDigLabel.Size = UDim2.new(0,100,0,15); autoDigLabel.Position = UDim2.new(0,10,0,100)
 autoDigLabel.BackgroundTransparency = 1; autoDigLabel.Text = "Auto Dig = Auto Click"
 autoDigLabel.TextColor3 = Color3.new(1,1,1); autoDigLabel.TextSize = 9
+autoDigLabel.TextXAlignment = Enum.TextXAlignment.Left 
 
 local startAutoDig, stopAutoDig
 local autoDig        = false
@@ -741,6 +752,7 @@ local convertBalloonLabel = Instance.new("TextLabel", miscTab)
 convertBalloonLabel.Size = UDim2.new(0,100,0,15); convertBalloonLabel.Position = UDim2.new(0,10,0,125)
 convertBalloonLabel.BackgroundTransparency = 1; convertBalloonLabel.Text = "Convert Balloon"
 convertBalloonLabel.TextColor3 = Color3.new(1,1,1); convertBalloonLabel.TextSize = 9
+convertBalloonLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 local convertBalloon = false
 local convertBalloonToggle, setConvertBalloonToggle = makeBoolBtn(
@@ -1754,9 +1766,9 @@ local function saveSettings()
 		walkSpeed      = state.walkSpeed,
 		jumpPower      = state.jumpPower,
 		khoangcachpart = state.khoangcachpart,
-		autoSp         = autoSp         or false,
-		--autoDisRunning = autoDisRunning or false,
+		autoSp         = autoSp or false,
 		selectedField  = selectedFields and selectedFields[1] or nil,
+		convertBalloon = convertBalloon or false, -- ===== ADDED =====
 		tokenPriority  = {},
 	}
 	if ALL_TOKENS then
@@ -1783,7 +1795,6 @@ local function loadSettings()
 	return data
 end
 
--- Gọi sau khi toàn bộ UI đã tạo xong
 local function applySettings(data)
 	if not data then return end
 
@@ -1814,7 +1825,6 @@ local function applySettings(data)
 				btn.BackgroundColor3 = name == data.selectedField and COL_ON or COL_OFF
 			end
 		end
-		if updateFieldTabLabel then updateFieldTabLabel() end
 	end
 
 	if type(data.tokenPriority) == "table" and ALL_TOKENS then
