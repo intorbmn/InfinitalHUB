@@ -1379,7 +1379,7 @@ local function claimHive(hum, hrp)
 
 		moveWithJump(hum, hrp, plat.Position, nil)
 		task.wait(0.5)
-		pressEWithRetry(1, 0.3)
+		pressEWithRetry(1, 1)
 
 		if (spawnPos.Value.Position - UNSET_POS).Magnitude > 0.1 then
 			print("✅ Claimed:", platform.Name); return
