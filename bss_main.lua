@@ -1618,7 +1618,7 @@ task.spawn(function()
 						if not capFull then break end
 					end
 
-					pressE()
+					pressEWithRetry(MAX_RETRY,MAX_WAIT)
 					task.wait(RETRY_WAIT)
 				end
 
