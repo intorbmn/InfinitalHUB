@@ -1046,14 +1046,33 @@ pcall(function()
 end)
 
 local function checkCapacity()
-	if convertBalloon and activateBtn then
-		local ok, isRed = pcall(function()
-			return activateBtn.BackgroundColor3 == Color3.fromRGB(201, 39, 28)
-		end)
-		if ok and isRed then return end
+	local check = false
+
+	if convertBalloon == true and activateBtn then
+
+		local isRed = activateBtn.BackgroundColor3 == Color3.fromRGB(201,39,28)
+		local isBlue = activateBtn.BackgroundColor3 == Color3.fromRGB(50,131,255)
+		local hasText = activateBtn.Text == "To Make Honey, Collect Pollen From Flower Fields"
+
+		if isRed then
+			check = true
+		elseif isBlue or hasText then
+			check = false
+		end
 	end
-	if pollenVal.Value >= capacityVal.Value then capFull = true
-	elseif pollenVal.Value == 0             then capFull = false end
+
+	-- Logic capFull
+	if pollenVal.Value >= capacityVal.Value then
+		capFull = true
+
+	elseif pollenVal.Value == 0 then
+		-- Nếu pollen = 0 mà nút vẫn đỏ → vẫn full
+		if check == true then
+			capFull = true
+		else
+			capFull = false
+		end
+	end
 end
 pollenVal:GetPropertyChangedSignal("Value"):Connect(checkCapacity)
 checkCapacity()
@@ -1070,8 +1089,7 @@ local WP = {
 	dau_cong_5                  = Vector3.new(-1.170,    4.052,    164.780),
 	cong_5                      = Vector3.new(-1.28,     20,       12.3),
 	chan_cau_thang_10           = Vector3.new(205.141,   20.006,   -21.036),
-	giua_cau_thang_10           = Vector3.new(205.324,   41.280,   54.562),
-	giua_cau_thang_10_2         = Vector3.new(230.166,   41.280,   53.612),
+	giua_cau_thang_10           = Vector3.new(215.324,   41.280,   54.562),
 	cong_10                     = Vector3.new(231.594,   67.999,   -92.190),
 	dau_cau_thang_strawberry    = Vector3.new(-140.49,   19.999,   56),
 	giua_cau_thang_strawberry   = Vector3.new(-236,      34.53,    56),
@@ -1100,27 +1118,27 @@ local FIELD_TO_FIELD_PATHS = {
 	["Sunflower Field -> Blue Flower Field"]   = { WP.nga_3_sun_dan_mush, WP.dau_cong_5, WP.dau_blue_flower_field },
 	["Sunflower Field -> Spider Field"]        = { WP.nga_3_sun_dan_mush, WP.dau_cong_5, WP.cong_5 },
 	["Sunflower Field -> Bamboo Field"]        = { WP.nga_3_sun_dan_mush, WP.dau_cong_5, WP.cong_5 },
-	["Sunflower Field -> Pineapple Patch"]     = { WP.nga_3_sun_dan_mush, WP.dau_cong_5, WP.cong_5, FIELDS["Bamboo Field"].pos, WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.giua_cau_thang_10_2, WP.cong_10 },
+	["Sunflower Field -> Pineapple Patch"]     = { WP.nga_3_sun_dan_mush, WP.dau_cong_5, WP.cong_5, FIELDS["Bamboo Field"].pos, WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.cong_10 },
 	["Dandelion Field -> Blue Flower Field"]   = { WP.dau_cong_5, WP.dau_blue_flower_field },
 	["Dandelion Field -> Spider Field"]        = { WP.dau_cong_5, WP.cong_5 },
 	["Dandelion Field -> Bamboo Field"]        = { WP.dau_cong_5, WP.cong_5 },
-	["Dandelion Field -> Pineapple Patch"]     = { WP.dau_cong_5, WP.cong_5, FIELDS["Bamboo Field"].pos, WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.giua_cau_thang_10_2, WP.cong_10 },
+	["Dandelion Field -> Pineapple Patch"]     = { WP.dau_cong_5, WP.cong_5, FIELDS["Bamboo Field"].pos, WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.cong_10 },
 	["Mushroom Field -> Blue Flower Field"]    = { WP.dau_cong_5, WP.dau_blue_flower_field },
 	["Mushroom Field -> Spider Field"]         = { WP.dau_cong_5, WP.cong_5 },
 	["Mushroom Field -> Bamboo Field"]         = { WP.dau_cong_5, WP.cong_5 },
-	["Mushroom Field -> Pineapple Patch"]      = { WP.dau_cong_5, WP.cong_5, FIELDS["Bamboo Field"].pos, WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.giua_cau_thang_10_2, WP.cong_10 },
+	["Mushroom Field -> Pineapple Patch"]      = { WP.dau_cong_5, WP.cong_5, FIELDS["Bamboo Field"].pos, WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.cong_10 },
 
 	["Blue Flower Field -> Spider Field"]      = { WP.dau_blue_flower_field, WP.dau_cong_5, WP.cong_5 },
 	["Blue Flower Field -> Bamboo Field"]      = { WP.dau_blue_flower_field, WP.dau_cong_5, WP.cong_5 },
-	["Blue Flower Field -> Pineapple Patch"]   = { WP.dau_blue_flower_field, WP.dau_cong_5, WP.cong_5, FIELDS["Bamboo Field"].pos, WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.giua_cau_thang_10_2, WP.cong_10 },
+	["Blue Flower Field -> Pineapple Patch"]   = { WP.dau_blue_flower_field, WP.dau_cong_5, WP.cong_5, FIELDS["Bamboo Field"].pos, WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.cong_10 },
 	["Spider Field -> Bamboo Field"]           = {},
-	["Spider Field -> Pineapple Patch"]        = { FIELDS["Bamboo Field"].pos, WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.giua_cau_thang_10_2, WP.cong_10 },
-	["Bamboo Field -> Pineapple Patch"]        = { WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.giua_cau_thang_10_2, WP.cong_10 },
+	["Spider Field -> Pineapple Patch"]        = { FIELDS["Bamboo Field"].pos, WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.cong_10 },
+	["Bamboo Field -> Pineapple Patch"]        = { WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.cong_10 },
 
 	["Blue Flower Field -> Strawberry Field"]  = { WP.dau_blue_flower_field, WP.dau_cong_5, WP.cong_5 },
 	["Spider Field -> Strawberry Field"]       = {},
 	["Bamboo Field -> Strawberry Field"]       = {},
-	["Pineapple Patch -> Strawberry Field"]    = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
+	["Pineapple Patch -> Strawberry Field"]    = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
 	["Strawberry Field -> Mountain Top Field"] = { WP.dau_cau_thang_strawberry, WP.giua_cau_thang_strawberry, WP.cong_15, WP.chan_doc_mountain, WP.giua_doc_mountain, WP.giua_doc_mountain_2, WP.giua_doc_mountain_3, WP.giua_doc_mountain_4, WP.truoc_cong_25, WP.sau_cong_25 },
 
 	["Cactus Field -> Pumpkin Patch"]          = {},
@@ -1136,7 +1154,7 @@ local FIELD_TO_FIELD_PATHS = {
 	["Rose Field -> Blue Flower Field"]        = { WP.goc_rose_field, WP.nga_3_sun_dan_mush, WP.dau_cong_5, WP.dau_blue_flower_field },
 	["Rose Field -> Spider Field"]             = { WP.chan_doc_rose, WP.truoc_shop_badge, WP.cong_15, WP.giua_cau_thang_strawberry, WP.dau_cau_thang_strawberry },
 	["Rose Field -> Bamboo Field"]             = { WP.chan_doc_rose, WP.truoc_shop_badge, WP.cong_15, WP.giua_cau_thang_strawberry, WP.dau_cau_thang_strawberry },
-	["Rose Field -> Pineapple Patch"]          = { WP.chan_doc_rose, WP.truoc_shop_badge, WP.cong_15, WP.giua_cau_thang_strawberry, WP.dau_cau_thang_strawberry, FIELDS["Bamboo Field"].pos, WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.giua_cau_thang_10_2, WP.cong_10 },
+	["Rose Field -> Pineapple Patch"]          = { WP.chan_doc_rose, WP.truoc_shop_badge, WP.cong_15, WP.giua_cau_thang_strawberry, WP.dau_cau_thang_strawberry, FIELDS["Bamboo Field"].pos, WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.cong_10 },
 	["Rose Field -> Strawberry Field"]         = { WP.chan_doc_rose, WP.truoc_shop_badge, WP.cong_15, WP.giua_cau_thang_strawberry, WP.dau_cau_thang_strawberry },
 	["Rose Field -> Cactus Field"]             = { WP.chan_doc_rose, WP.truoc_shop_badge },
 	["Rose Field -> Pumpkin Patch"]            = { WP.chan_doc_rose, WP.truoc_shop_badge },
@@ -1157,25 +1175,25 @@ local FIELD_TO_FIELD_PATHS = {
 	["Dandelion Field -> Strawberry Field"]    = { WP.dau_cong_5, WP.cong_5 },
 	["Mushroom Field -> Strawberry Field"]     = { WP.dau_cong_5, WP.cong_5 },
 
-	["Pineapple Patch -> Cactus Field"]        = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos, WP.dau_cau_thang_strawberry, WP.giua_cau_thang_strawberry, WP.cong_15 },
-	["Pineapple Patch -> Pumpkin Patch"]       = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos, WP.dau_cau_thang_strawberry, WP.giua_cau_thang_strawberry, WP.cong_15 },
-	["Pineapple Patch -> Pine Tree Forest"]    = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos, WP.dau_cau_thang_strawberry, WP.giua_cau_thang_strawberry, WP.cong_15 },
+	["Pineapple Patch -> Cactus Field"]        = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos, WP.dau_cau_thang_strawberry, WP.giua_cau_thang_strawberry, WP.cong_15 },
+	["Pineapple Patch -> Pumpkin Patch"]       = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos, WP.dau_cau_thang_strawberry, WP.giua_cau_thang_strawberry, WP.cong_15 },
+	["Pineapple Patch -> Pine Tree Forest"]    = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos, WP.dau_cau_thang_strawberry, WP.giua_cau_thang_strawberry, WP.cong_15 },
 
-	["Stump Field -> Sunflower Field"]         = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
-	["Stump Field -> Dandelion Field"]         = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
-	["Stump Field -> Mushroom Field"]          = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
-	["Stump Field -> Blue Flower Field"]       = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
-	["Stump Field -> Spider Field"]            = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
-	["Stump Field -> Bamboo Field"]            = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
-	["Stump Field -> Strawberry Field"]        = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
+	["Stump Field -> Sunflower Field"]         = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
+	["Stump Field -> Dandelion Field"]         = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
+	["Stump Field -> Mushroom Field"]          = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
+	["Stump Field -> Blue Flower Field"]       = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
+	["Stump Field -> Spider Field"]            = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
+	["Stump Field -> Bamboo Field"]            = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
+	["Stump Field -> Strawberry Field"]        = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
 	["Stump Field -> Pineapple Patch"]         = {},
-	["Stump Field -> Cactus Field"]            = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
-	["Stump Field -> Pumpkin Patch"]           = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
-	["Stump Field -> Pine Tree Forest"]        = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
-	["Stump Field -> Rose Field"]              = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
-	["Stump Field -> Mountain Top Field"]      = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
-	["Stump Field -> Coconut Field"]           = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
-	["Stump Field -> Pepper Patch"]            = { WP.cong_10, WP.giua_cau_thang_10_2, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
+	["Stump Field -> Cactus Field"]            = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
+	["Stump Field -> Pumpkin Patch"]           = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
+	["Stump Field -> Pine Tree Forest"]        = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
+	["Stump Field -> Rose Field"]              = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
+	["Stump Field -> Mountain Top Field"]      = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
+	["Stump Field -> Coconut Field"]           = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
+	["Stump Field -> Pepper Patch"]            = { WP.cong_10, WP.giua_cau_thang_10, WP.chan_cau_thang_10, FIELDS["Bamboo Field"].pos },
 
 	["Coconut Field -> Pepper Patch"]          = {},
 	["Sunflower Field -> Coconut Field"]       = {},
@@ -1198,14 +1216,14 @@ local FIELD_PATHS = {
 	["Spider Field"]      = { WP.gan_spawn_chung, WP.dau_cong_5, WP.cong_5 },
 	["Strawberry Field"]  = { WP.gan_spawn_chung, WP.dau_cong_5, WP.cong_5 },
 	["Bamboo Field"]      = { WP.gan_spawn_chung, WP.dau_cong_5, WP.cong_5 },
-	["Pineapple Patch"]   = { WP.gan_spawn_chung, WP.dau_cong_5, WP.cong_5, FIELDS["Bamboo Field"].pos, WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.giua_cau_thang_10_2, WP.cong_10 },
+	["Pineapple Patch"]   = { WP.gan_spawn_chung, WP.dau_cong_5, WP.cong_5, FIELDS["Bamboo Field"].pos, WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.cong_10 },
 	["Blue Flower Field"] = { WP.gan_spawn_chung, WP.dau_cong_5, WP.dau_blue_flower_field },
 	["Cactus Field"]      = { WP.gan_spawn_chung, WP.dau_cong_5, WP.cong_5, WP.dau_cau_thang_strawberry, WP.giua_cau_thang_strawberry, WP.cong_15 },
 	["Pumpkin Patch"]     = { WP.gan_spawn_chung, WP.dau_cong_5, WP.cong_5, WP.dau_cau_thang_strawberry, WP.giua_cau_thang_strawberry, WP.cong_15 },
 	["Pine Tree Forest"]  = { WP.gan_spawn_chung, WP.dau_cong_5, WP.cong_5, WP.dau_cau_thang_strawberry, WP.giua_cau_thang_strawberry, WP.cong_15 },
 	["Rose Field"]        = { WP.cong_1_sunflower, WP.goc_rose_field },
 	["Mountain Top Field"]= { WP.gan_spawn_chung, WP.dau_cong_5, WP.cong_5, WP.dau_cau_thang_strawberry, WP.giua_cau_thang_strawberry, WP.cong_15, WP.chan_doc_mountain, WP.giua_doc_mountain, WP.giua_doc_mountain_2, WP.giua_doc_mountain_3, WP.giua_doc_mountain_4, WP.truoc_cong_25, WP.sau_cong_25 },
-	["Stump Field"]       = { WP.gan_spawn_chung, WP.dau_cong_5, WP.cong_5, FIELDS["Bamboo Field"].pos, WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.giua_cau_thang_10_2, WP.cong_10 },
+	["Stump Field"]       = { WP.gan_spawn_chung, WP.dau_cong_5, WP.cong_5, FIELDS["Bamboo Field"].pos, WP.chan_cau_thang_10, WP.giua_cau_thang_10, WP.cong_10 },
 	["Coconut Field"]     = {},
 	["Pepper Patch"]      = {},
 	["Ant Field"]         = {},
@@ -1221,11 +1239,18 @@ local function findNearestWaypointIndex(wps, currentPos, destPos)
 	local bestDist = math.huge
 	for i, pos in ipairs(wps) do
 		local d = (pos - currentPos).Magnitude
+
+		-- Bỏ qua waypoint nếu chênh lệch Y >= 3
+		if math.abs(pos.Y - currentPos.Y) >= 2.5 then
+			continue
+		end
+
 		if d < bestDist then
 			bestDist = d
 			bestIdx  = i
 		end
 	end
+
 	-- Nếu dest gần hơn wp gần nhất -> không cần đi qua wp nào nữa
 	local distToDest = (currentPos - destPos).Magnitude
 	if distToDest < bestDist then
@@ -1300,7 +1325,7 @@ local function moveWithJump(hum, hrp, destPos, interruptCheck)
 		local moved = (hrp.Position - lastPos).Magnitude
 		if moved < 0.5 then
 			stuckTimer += 0.05
-			if stuckTimer >= 0.8 then
+			if stuckTimer >= 0.5 then
 				hum.Jump = true; task.wait(0.1)
 				hum:MoveTo(destPos); stuckTimer = 0
 			end
@@ -1626,6 +1651,15 @@ task.spawn(function()
 				if not capFull then
 					targetLabel.Text = "✅ Đã nộp xong, quay lại farm..."
 				else
+					local check = false
+					if convertBalloon == true then
+						if activateBtn and activateBtn.BackgroundColor3 == Color3.fromRGB(201,39,28) then
+							check = true
+						else check = false
+						end
+					end
+					if pollenVal.Value >= capacityVal.Value then targetLabel.Text = "Đang Convert Pollen" 
+					elseif pollenVal.Value == 0 and check == false then end
 					targetLabel.Text = "⚠️ Nộp pollen thất bại, thử lại..."
 				end
 
@@ -1654,34 +1688,45 @@ task.spawn(function()
 		cleanCollected()
 
 		local fieldName, fieldData = getCurrentField(hrp)
+		local targetFieldName, targetFieldData = getSelectedFieldData()
 
-		if not fieldName then
-			local targetFieldName, targetFieldData = getSelectedFieldData()
-			if not targetFieldName then
-				targetLabel.Text = "Không tìm thấy field"
+		if not targetFieldName then
+			targetLabel.Text = "Không tìm thấy field"
+			continue
+		end
+
+		-- ❗ Nếu không ở field nào HOẶC đang ở field khác
+		if not fieldName or fieldName ~= targetFieldName then
+
+			-- Nếu đã ở đúng field rồi thì bỏ qua
+			if isInField(hrp.Position, targetFieldData) then
+				fieldName = targetFieldName
+				fieldData = targetFieldData
+			else
+				local destPos   = targetFieldData.pos
+				local interrupt = function() 
+					return not state.autoFarm or capFull 
+				end
+				local path = nil
+
+				-- Nếu đang ở 1 field khác thì dùng field-to-field path
+				if fieldName and fieldName ~= targetFieldName then
+					path = getFieldToFieldPath(fieldName, targetFieldName, hrp.Position)
+				end
+
+				-- Fallback
+				if not path then
+					path = getPathToField(targetFieldName, hrp.Position)
+				end
+
+				moveThroughPath(
+					hum, hrp, path, destPos,
+					"→ Đến field: " .. targetFieldName,
+					interrupt
+				)
+
 				continue
 			end
-
-			if isInField(hrp.Position, targetFieldData) then continue end
-
-			local destPos   = targetFieldData.pos
-			local interrupt = function() return not state.autoFarm or capFull end
-			local path      = nil
-
-			-- Ưu tiên dùng field-to-field path nếu đang đứng trong field khác
-			local fromField = getAnyCurrentField(hrp)
-			if fromField and fromField ~= targetFieldName then
-				path = getFieldToFieldPath(fromField, targetFieldName, hrp.Position)
-			end
-
-			-- Fallback: dùng FIELD_PATHS từ spawn, bắt đầu từ waypoint gần nhất
-			if not path then
-				path = getPathToField(targetFieldName, hrp.Position)
-			end
-
-			moveThroughPath(hum, hrp, path, destPos,
-				"→ Đến field: " .. targetFieldName, interrupt)
-			continue
 		end
 
 		placeSprinkler(hum, hrp, fieldData, fieldName)
